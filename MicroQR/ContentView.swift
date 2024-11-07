@@ -1,86 +1,83 @@
-//
-//  ContentView.swift
-//  MicroQR
-//
-//  Created by Bastiaan Quast on 11/7/24.
-//
-
 import SwiftUI
-import CoreData
+import WebKit
 
 struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        VStack {
+            Text("QR Code Example")
+                .font(.title)
+                .padding()
+            
+            if let qrCode = try? createQRCode() {
+                QRCodeView(qrCode: qrCode)
+                    .frame(width: 200, height: 200)
+                    .padding()
+            } else {
+                Text("Failed to generate QR code")
+                    .foregroundColor(.red)
             }
         }
     }
+    
+    private func createQRCode() throws -> QRCode {
+        // Create a simple QR code with hardcoded data
+        return try QRCode.create(
+            "Hello, World!",
+            errorLevel: .medium
+        )
+        .moduleSize(4)  // Make modules smaller for SwiftUI view
+        .colors(front: .init(red: 0, green: 0, blue: 0))
+    }
+}
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+struct QRCodeView: View {
+    let qrCode: QRCode
+    
+    var body: some View {
+        if let svgString = try? qrCode.svg(),
+           let data = svgString.data(using: .utf8) {
+            WebView(data: data)
+        } else {
+            Text("Failed to render QR code")
+                .foregroundColor(.red)
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+#if os(iOS)
+struct WebView: UIViewRepresentable {
+    let data: Data
+    
+    func makeUIView(context: Context) -> WKWebView {
+        return WKWebView()
+    }
+    
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.load(data,
+                    mimeType: "image/svg+xml",
+                    characterEncodingName: "UTF-8",
+                    baseURL: Bundle.main.bundleURL)
+    }
+}
+#elseif os(macOS)
+struct WebView: NSViewRepresentable {
+    let data: Data
+    
+    func makeNSView(context: Context) -> WKWebView {
+        return WKWebView()
+    }
+    
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        webView.load(data,
+                    mimeType: "image/svg+xml",
+                    characterEncodingName: "UTF-8",
+                    baseURL: Bundle.main.bundleURL)
+    }
+}
+#endif
 
-#Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
